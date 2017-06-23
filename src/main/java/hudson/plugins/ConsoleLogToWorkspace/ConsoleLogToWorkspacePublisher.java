@@ -14,6 +14,7 @@ import hudson.tasks.Publisher;
 import hudson.tasks.Recorder;
 import hudson.util.FormValidation;
 
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -40,13 +41,15 @@ public class ConsoleLogToWorkspacePublisher extends Recorder {
 
     private final String fileName;
     private final boolean writeConsoleLog;
+    private final boolean zipConsoleLog;
     private final boolean blockOnAllOutput;
 
     // Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
     @DataBoundConstructor
-    public ConsoleLogToWorkspacePublisher(String fileName, boolean writeConsoleLog, boolean blockOnAllOutput) {
+    public ConsoleLogToWorkspacePublisher(String fileName, boolean writeConsoleLog, boolean zipConsoleLog, boolean blockOnAllOutput) {
         this.fileName = fileName;
         this.writeConsoleLog = writeConsoleLog;
+        this.zipConsoleLog = zipConsoleLog;
         //Currently the blocking on other output is broken.
         this.blockOnAllOutput = blockOnAllOutput;
     }
@@ -66,6 +69,10 @@ public class ConsoleLogToWorkspacePublisher extends Recorder {
         return writeConsoleLog;
     }
 
+    public boolean getZipConsoleLog() {
+        return zipConsoleLog;
+    }
+
     public boolean getBlockOnAllOutput() {
         return blockOnAllOutput;
     }
@@ -77,8 +84,10 @@ public class ConsoleLogToWorkspacePublisher extends Recorder {
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
         final FilePath workspace;
         final FilePath outFile;
+        final FilePath zipFile;
         final File f;
         final OutputStream os;
+        final String lineSeparator = System.getProperty("line.separator");
         try {
             if (writeConsoleLog) {
                 workspace = build.getWorkspace();
@@ -88,10 +97,22 @@ public class ConsoleLogToWorkspacePublisher extends Recorder {
                 // versions of jenkins.
                 //build.writeWholeLogTo(os);
                 writeLogFile(build, os, blockOnAllOutput);
+                if (zipConsoleLog) {
+                    zipFile = workspace.child(fileName.substring(0, fileName.lastIndexOf('.')) + ".zip");
+                    outFile.zip(zipFile);
+                    os.close();
+                    outFile.delete();
+                }
             }
         } catch (IOException e) {
+            listener.getLogger().println("IOException message: " + e.getMessage() + lineSeparator
+                    + "StackTrace:" + lineSeparator
+                    + StringUtils.join(e.getStackTrace(), lineSeparator));
             build.setResult(Result.UNSTABLE);
         } catch (InterruptedException e) {
+            listener.getLogger().println("InterruptedException message: " + e.getMessage() + lineSeparator
+                    + "StackTrace:" + lineSeparator
+                    + StringUtils.join(e.getStackTrace(), lineSeparator));
             build.setResult(Result.UNSTABLE);
         }
         return true;
